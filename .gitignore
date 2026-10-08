@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+# dane: wersjonujemy tylko manifesty
+data/*
+!data/manifests/

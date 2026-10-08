@@ -1,0 +1,18 @@
+# Python 3.12 (torch/fiftyone nie wspierają jeszcze w pełni 3.14)
+numpy>=2
+pandas
+pyarrow
+pillow
+pillow-heif
+imagehash
+requests
+tqdm
+python-dotenv
+shapely>=2
+pyproj
+mercantile
+datasets
+fiftyone
+open_clip_torch
+# torch/torchvision CPU instaluj osobno:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
