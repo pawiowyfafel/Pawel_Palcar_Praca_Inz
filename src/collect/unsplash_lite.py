@@ -8,7 +8,8 @@ import pandas as pd
 from tqdm import tqdm
 from common import Meta, uid, get, S, RAW, cli_limit
 
-ZIP_URL = "https://unsplash.com/data/lite/latest"
+# unsplash.com/data/lite/latest przekierowuje tutaj (strona Unsplash zwraca 403 dla naszego UA)
+ZIP_URL = "https://unsplash-datasets.s3.amazonaws.com/lite/latest/unsplash-research-dataset-lite-latest.zip"
 D = RAW / "unsplash" / "lite"
 KEEP = {"mountain", "mountains", "hiking", "hike", "trail", "path", "footpath", "forest",
         "woods", "woodland", "valley", "alps", "peak", "ridge", "trekking", "glacier",
@@ -29,9 +30,14 @@ def ensure_lite():
         r.raise_for_status()
         for chunk in r.iter_content(1 << 20):
             f.write(chunk)
-    with zipfile.ZipFile(z) as zf:
-        zf.extractall(D)
+    with zipfile.ZipFile(z) as zf:          # tylko potrzebne pliki (conversions/collections ~830 MB)
+        zf.extractall(D, [n for n in zf.namelist() if n.startswith(("photos", "keywords"))
+                          or n.endswith(".md")])
     z.unlink()
+
+
+def txt(*vals):
+    return " ".join(str(v) for v in vals if isinstance(v, str) and v.strip()) or None
 
 
 def read(name):
@@ -63,7 +69,7 @@ def main():
             continue
         meta.add(id_, resp.content, source_id=r.photo_id, url=r.photo_url,
                  author=r.photographer_username, group=f"unsplash:{r.photographer_username}",
-                 camera=f"{getattr(r, 'exif_camera_make', '')} {getattr(r, 'exif_camera_model', '')}".strip(),
+                 camera=txt(getattr(r, "exif_camera_make", None), getattr(r, "exif_camera_model", None)),
                  lat=getattr(r, "photo_location_latitude", None),
                  lon=getattr(r, "photo_location_longitude", None),
                  license="Unsplash License (Lite dataset)")

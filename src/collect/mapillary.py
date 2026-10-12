@@ -3,18 +3,23 @@
 Zostają zdjęcia <=20 m od ścieżki z OSM i >=60 m od drogi, max 6 klatek z sekwencji.
 Wymaga MAPILLARY_TOKEN w .env.
 """
-import os, random
+import json, os, random, time
 from collections import defaultdict
 from datetime import datetime, timezone
-import mercantile, numpy as np, shapely
+import mercantile, numpy as np, requests, shapely
 from shapely.geometry import LineString
 from pyproj import Transformer
 from tqdm import tqdm
-from common import Meta, uid, get, S, cli_limit
+from common import Meta, uid, get, S, RAW, cli_limit
 
 H = {"Authorization": f"OAuth {os.environ['MAPILLARY_TOKEN']}"}
 API = "https://graph.mapillary.com/images"
-OVERPASS = "https://overpass-api.de/api/interpreter"
+OVERPASS = ["https://lz4.overpass-api.de/api/interpreter",
+            "https://z.overpass-api.de/api/interpreter",
+            "https://overpass-api.de/api/interpreter",
+            "https://overpass.kumi.systems/api/interpreter"]
+CACHE = RAW / "mapillary" / "cache"
+CACHE.mkdir(parents=True, exist_ok=True)
 FIELDS = "id,thumb_1024_url,captured_at,sequence,computed_geometry,geometry,is_pano,creator,camera_type"
 
 # (west, south, east, north) — przybliżone, popraw na bboxfinder.com
@@ -25,6 +30,13 @@ REGIONS = {
     "pieniny":    (20.30, 49.36, 20.55, 49.45),
     "karkonosze": (15.45, 50.70, 15.85, 50.85),
     "bieszczady": (22.30, 49.00, 22.80, 49.25),   # holdout geograficzny -> test_ood
+    # poza Polską: w PL mało zdjęć z tras pieszych poza Tatrami i Karkonoszami
+    "beskid_slaski":   (18.80, 49.55, 19.05, 49.72),
+    "mala_fatra":      (18.95, 49.13, 19.20, 49.25),
+    "nizne_tatry":     (19.30, 48.85, 19.80, 49.00),
+    "slovensky_raj":   (20.25, 48.88, 20.50, 48.98),
+    "jeseniky":        (17.05, 50.00, 17.35, 50.20),
+    "alpy_julijskie":  (13.65, 46.25, 14.00, 46.45),
 }
 HOLDOUT = {"bieszczady"}
 PATHS = "path|footway|track|bridleway|steps"
@@ -35,13 +47,36 @@ BAD_CAM = {"fisheye", "spherical", "equirectangular"}
 TR = Transformer.from_crs(4326, 3035, always_xy=True)   # metry (ETRS89-LAEA)
 
 
-def osm_lines(bbox, regex):
+def cached(name, fn):
+    """Wynik fn() zapisany w data/raw/mapillary/cache/<name>.json (wznawianie bez powtarzania API)."""
+    p = CACHE / f"{name}.json"
+    if p.exists():
+        return json.loads(p.read_text(encoding="utf-8"))
+    out = fn()
+    p.write_text(json.dumps(out), encoding="utf-8")
+    return out
+
+
+def overpass(q):
+    for i in range(6):                       # serwery Overpass bywają przeciążone (429/504)
+        url = OVERPASS[i % len(OVERPASS)]
+        try:
+            r = S.post(url, data={"data": q}, timeout=360)
+            if r.status_code == 200:
+                return r.json()["elements"]
+            print(f"  Overpass {url}: HTTP {r.status_code}, ponawiam")
+        except requests.RequestException as e:
+            print(f"  Overpass {url}: {type(e).__name__}, ponawiam")
+        time.sleep(30 * (i + 1))
+    raise RuntimeError("Overpass niedostępny – uruchom ponownie później")
+
+
+def osm_lines(region, bbox, kind, regex):
     w, s, e, n = bbox
     q = f'[out:json][timeout:300];way["highway"~"^({regex})$"]({s},{w},{n},{e});out geom;'
-    r = S.post(OVERPASS, data={"data": q}, timeout=360)
-    r.raise_for_status()
+    elements = cached(f"osm_{region}_{kind}", lambda: overpass(q))
     lines = []
-    for el in r.json()["elements"]:
+    for el in elements:
         g = el.get("geometry")
         if g and len(g) > 1:
             xs, ys = TR.transform([p["lon"] for p in g], [p["lat"] for p in g])
@@ -84,7 +119,7 @@ def main():
     limit = cli_limit()
     meta, rng = Meta("mapillary"), random.Random(0)
     for region, bbox in REGIONS.items():
-        imgs = [im for im in list_images(bbox)
+        imgs = [im for im in cached(f"images_{region}", lambda: list_images(bbox))
                 if not im.get("is_pano") and im.get("camera_type") not in BAD_CAM and coords(im)]
         print(f"{region}: {len(imgs)} zdjęć w bboxie")
         if not imgs:
@@ -92,8 +127,8 @@ def main():
         xy = np.array([coords(im)[:2] for im in imgs])
         xs, ys = TR.transform(xy[:, 0], xy[:, 1])
         pts = shapely.points(xs, ys)
-        ok = (nearest(osm_lines(bbox, PATHS), pts, PATH_MAX_M) <= PATH_MAX_M) & \
-             (nearest(osm_lines(bbox, ROADS), pts, ROAD_MIN_M) >= ROAD_MIN_M)
+        ok = (nearest(osm_lines(region, bbox, "paths", PATHS), pts, PATH_MAX_M) <= PATH_MAX_M) & \
+             (nearest(osm_lines(region, bbox, "roads", ROADS), pts, ROAD_MIN_M) >= ROAD_MIN_M)
         by_seq = defaultdict(list)
         for im, k in zip(imgs, ok):
             if k:

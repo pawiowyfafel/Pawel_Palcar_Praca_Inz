@@ -10,8 +10,10 @@ RAW, INTERIM, PROC, MANIF = DATA / "raw", DATA / "interim", DATA / "processed", 
 for p in (RAW, INTERIM, PROC, MANIF):
     p.mkdir(parents=True, exist_ok=True)
 
-# Wikimedia i Overpass wymagają sensownego User-Agenta z kontaktem (CONTACT_EMAIL w .env)
-UA = f"AGH-thesis-dataset/0.1 (engineering thesis; mailto:{os.environ.get('CONTACT_EMAIL', 'unknown')})"
+# Wikimedia i Overpass wymagają User-Agenta z kontaktem (bez niego Wikimedia zwraca 429)
+REPO = "https://github.com/pawiowyfafel/Pawel_Palcar_Praca_Inz"
+_mail = os.environ.get("CONTACT_EMAIL", "").strip()
+UA = f"AGH-thesis-dataset/0.1 ({REPO}{'; ' + _mail if _mail else ''}) python-requests"
 S = requests.Session()
 S.headers["User-Agent"] = UA
 
@@ -23,7 +25,8 @@ def get(url, params=None, headers=None, timeout=30, retries=4):
             if r.status_code == 200:
                 return r
             if r.status_code in (429, 500, 502, 503, 504):
-                time.sleep(5 * 2 ** i)
+                ra = r.headers.get("Retry-After", "")
+                time.sleep(int(ra) + 1 if ra.isdigit() else 5 * 2 ** i)
                 continue
             return None
         except requests.RequestException:

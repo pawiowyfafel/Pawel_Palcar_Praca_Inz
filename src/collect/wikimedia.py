@@ -1,8 +1,8 @@
 """Wikimedia Commons: zdjęcia szlaków z kategorii (licencje CC, per plik). W całości -> test_ood."""
-import random, re, time
+import json, random, re, time
 from collections import deque
 from tqdm import tqdm
-from common import Meta, uid, get, cli_limit
+from common import Meta, uid, get, RAW, cli_limit
 
 API = "https://commons.wikimedia.org/w/api.php"
 # Kategorie sprawdzone 2026-10-08; nieistniejące są pomijane z ostrzeżeniem
@@ -29,13 +29,15 @@ def members(cat, cmtype):
         params.update(d["continue"])
 
 
-def crawl():
+def crawl(cap):
     seen, files, q = set(), {}, deque((c, 0) for c in SEEDS)
-    while q and len(files) < MAX_FILES * 4:
+    while q and len(files) < cap * 2:
         cat, depth = q.popleft()
         if cat in seen:
             continue
         seen.add(cat)
+        if len(seen) % 50 == 0:
+            print(f"  przejrzano {len(seen)} kategorii, kolejka {len(q)}, plików {len(files)}", flush=True)
         n0 = len(files)
         for m in members(cat, "file"):
             t = m["title"]
@@ -57,7 +59,14 @@ def strip_html(s):
 def main():
     limit = cli_limit()
     cap = min(MAX_FILES, limit) if limit else MAX_FILES
-    files = crawl()
+    cache = RAW / "wikimedia" / "candidates.json"
+    if cache.exists():
+        files = json.loads(cache.read_text(encoding="utf-8"))
+    else:
+        files = crawl(cap)
+        if not limit:
+            cache.write_text(json.dumps(files, ensure_ascii=False), encoding="utf-8")
+    print(f"kategorie przeszukane, kandydatów: {len(files)}")
     titles = list(files)
     random.Random(0).shuffle(titles)
     meta = Meta("wikimedia")

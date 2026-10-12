@@ -18,7 +18,7 @@ Pozytywem **nie jest**: miasto, wnętrze, plaża, mapa, zrzut ekranu, obraz/rysu
 | Places365 | MIT CSAIL; zdjęcia z wyszukiwarek, kategorie sceny oznaczone przez ludzi | badania, niekomercyjnie | ~8 000 | trzon zbioru (train/val/test) |
 | Mapillary | crowdsourcing: użytkownicy wgrywają zdjęcia z telefonów i kamerek | CC BY-SA 4.0 | ~5 000 | najbardziej „telefonowe” zdjęcia szlaków; Bieszczady → test OOD |
 | Unsplash Lite | fotografowie wgrywający zdjęcia na Unsplash | Unsplash License (Lite: komercyjnie i niekomercyjnie) | ~4 000 | różnorodność, ale estetyczny bias |
-| Open Images V7 | Google; zdjęcia z Flickra z etykietami | CC BY 2.0 (zdjęcia), CC BY 4.0 (etykiety) | ~2 000 | amatorskie zdjęcia, zastępstwo Flickr API |
+| Open Images V7 | Google; zdjęcia z Flickra z etykietami zweryfikowanymi przez ludzi | CC BY 2.0 (zdjęcia), CC BY 4.0 (etykiety) | ~2 000 | amatorskie zdjęcia, zastępstwo Flickr API |
 | Wikimedia Commons | wolontariusze Wikipedii | CC BY / BY-SA / CC0 per plik | ~1 500 | **w całości test OOD** (źródło niewidziane w treningu) |
 | Własne zdjęcia | Ty i znajomi, różne telefony | własne, za zgodą | 250–300 | **w całości test_real (T3)** |
 
@@ -47,12 +47,14 @@ Każdy skrypt zbierający dopisuje do swojego `meta.jsonl` i po przerwaniu wznaw
 **Skąd zdjęcia.** Autorzy zbierali je z wyszukiwarek obrazów, wpisując nazwy kategorii scen z przymiotnikami. Potem pracownicy Amazon Mechanical Turk weryfikowali, czy zdjęcie pasuje do kategorii. Prawa autorskie należą do autorów oryginałów, a zbiór udostępniono do badań.
 
 **Jak pobieramy** (`collect/places365.py`):
-1. Otwieramy strumień HTTP do archiwum `train_256_places365standard.tar` (26 GB, serwer MIT).
-2. Czytamy tar „w locie”, plik po pliku, bez zapisywania całego archiwum.
-3. Z nazwy pliku (`data_256/m/mountain_path/00000123.jpg`) odczytujemy kategorię.
-4. Zapisujemy tylko wybrane kategorie, losowo ~70% plików, do limitu na kategorię. Na dysku zostaje ~0,5 GB.
+Archiwum `train_256_places365standard.tar` ma 26 GB, ale **jest posortowane według kategorii**: każda kategoria to ciągły fragment pliku. Nie trzeba więc pobierać całości:
+1. Dla każdej kategorii **wyszukiwaniem binarnym** znajdujemy, gdzie zaczyna się w archiwum. Każda próba to zapytanie HTTP Range o 128 KB; w pobranym fragmencie szukamy nagłówka tar (sygnatura `ustar` + suma kontrolna) i odczytujemy nazwę pliku, np. `data_256/m/mountain_path/00000123.jpg`.
+2. Od znalezionego miejsca strumieniujemy tylko tę kategorię, aż zacznie się następna.
+3. Zapisujemy losowo ~70% plików, do limitu na kategorię.
 
-Plan awaryjny: `collect/places365_hf.py` czyta mirror na Hugging Face (parquet, ~19 GB strumienia).
+Łącznie pobieramy ~0,5 GB zamiast 26 GB, co przy łączu ~1 MB/s oznacza minuty zamiast godzin.
+
+Plan awaryjny: `collect/places365_hf.py` czyta mirror na Hugging Face. Ten mirror też jest ułożony według klas, ale nie obsługuje skoków, więc trzeba przeczytać prawie całe ~19 GB.
 
 **Co bierzemy.** 25 kategorii:
 - szlaki i teren: `mountain_path`, `forest_path`, `mountain`, `mountain_snowy`, `forest/broadleaf`, `forest_road`, `valley`, `field/wild`, `creek`, `cliff`, `snowfield`, `river`, `waterfall`, `pasture`, `glacier`, `canyon`, `marsh`, `swamp`, `rock_arch`, `crevasse`;
@@ -92,7 +94,7 @@ Plan awaryjny: `collect/places365_hf.py` czyta mirror na Hugging Face (parquet, 
 **Skąd zdjęcia.** Fotografowie, często półprofesjonalni, wgrywają je na Unsplash.
 
 **Jak pobieramy** (`collect/unsplash_lite.py`):
-1. Skrypt sam pobiera archiwum z metadanymi (~320 MB, pliki TSV) i je rozpakowuje.
+1. Skrypt sam pobiera archiwum z metadanymi (~320 MB) i rozpakowuje z niego tylko `photos` i `keywords` (TSV) oraz regulamin.
 2. Każde zdjęcie dostaje punkty ze słów kluczowych: +1 za każde „górskie” (mountain, trail, forest, hiking…), −2 za każde „miejskie” (city, street, beach, aerial…). Bierzemy zdjęcia z wynikiem > 0.
 3. Maksymalnie 15 zdjęć od jednego fotografa, łącznie 6 000 kandydatów.
 4. Obraz pobieramy z CDN Unsplash w szerokości 1024 px.
@@ -107,9 +109,15 @@ Plan awaryjny: `collect/places365_hf.py` czyta mirror na Hugging Face (parquet, 
 
 **Skąd zdjęcia.** Z Flickra, wybrane z tych, które autorzy udostępnili na licencji CC BY 2.0. To w dużej części amatorskie zdjęcia. Open Images zastępuje Flickr API, które od 2025 r. wydaje klucze tylko płatnym kontom Pro.
 
-**Jak pobieramy** (`collect/openimages.py`). Biblioteka FiftyOne pobiera pliki etykiet, wybiera zdjęcia mające co najmniej jedną z klas: `Hiking`, `Trail`, `Footpath`, `Path`, `Mountain`, `Mountain range`, `Mountain pass`, `Ridge`, `Summit`, `Highland`, `Hill`, `Forest`, `Old-growth forest`, `Wilderness`, `Valley`, `Waterfall`, `Glacier`, `Nature reserve` (nazwy sprawdzone w `oidv7-class-descriptions.csv`), i ściąga 6 000 losowych zdjęć.
+**Jak pobieramy** (`collect/openimages.py`). Biblioteka FiftyOne odpada, bo obsługuje tylko 600 klas obiektów, a nie klasy scen. Robimy to więc bezpośrednio:
+1. Strumieniowo czytamy plik etykiet zweryfikowanych przez ludzi (`oidv7-train-annotations-human-imagelabels.csv`, 2,7 GB). Zostawiamy zdjęcia, którym anotator potwierdził (`Confidence=1`) co najmniej jedną z klas: `Hiking`, `Trail`, `Footpath`, `Path`, `Mountain`, `Mountain range`, `Mountain pass`, `Ridge`, `Summit`, `Highland`, `Hill`, `Forest`, `Old-growth forest`, `Wilderness`, `Valley`, `Waterfall`, `Glacier`, `Nature reserve` (nazwy sprawdzone w `oidv7-class-descriptions.csv`).
+2. Strumieniowo czytamy metadane (`oidv6-train-images-with-labels-with-rotation.csv`, 2,7 GB): autora, licencję, link do oryginału na Flickrze i obrót.
+3. Losujemy maksymalnie 15 zdjęć na autora, łącznie 6 000.
+4. Pobieramy obraz z publicznego bucketu S3 Open Images, obracamy według metadanych i zmniejszamy do krótszego boku 1024 px.
 
-**Co zapisujemy:** `source_id` (ID Open Images), `oi_labels` (wszystkie etykiety zdjęcia), `group` (= samo zdjęcie), `license`. Pliki zostają w cache FiftyOne (`~/fiftyone/`).
+Wyniki kroków 1–2 zapisują się w `data/raw/openimages/*_filtered.csv`, więc kolejne uruchomienia nie czytają 5 GB od nowa.
+
+**Co zapisujemy:** `source_id` (ID Open Images), `url` (strona zdjęcia na Flickrze), `author`, `group` = autor, `oi_labels` (nasze klasy na zdjęciu), `license`.
 
 **Wada.** Klasa `Path` obejmuje też chodniki miejskie, więc filtr CLIP jest tu potrzebny.
 
@@ -144,6 +152,24 @@ CLIP (Radford i in., 2021), w implementacji OpenCLIP: model ViT-B/32 trenowany n
 - `tag_text`: tekst lub watermark na zdjęciu.
 
 Odrzucamy zdjęcia z `other ≥ 0,30` lub `tag_text ≥ 0,5`. Tagi są **przybliżone**: służą do statystyk i ukierunkowania przeglądu, a nie jako prawda. Filtr CLIP sam wprowadza stronniczość selekcji (zostają zdjęcia „typowe” dla CLIP), co trzeba opisać w ograniczeniach.
+
+Filtr działa w dwóch etapach. Najpierw liczy embeddingi obrazów: to wolne (~20 min na CPU dla 39 tys. zdjęć) i przyrostowe, czyli liczy tylko nowe zdjęcia. Potem ocenia te embeddingi promptami, co trwa sekundy (`python clip_filter.py --rescore`). Dzięki temu prompty można było dostroić po obejrzeniu wyników:
+- **„a screenshot” działał jak worek na wszystko.** Trafiały tam też trudne pozytywy: drogowskazy szlaku, jaskinie, nocne niebo w górach. Dodaliśmy prompty pozytywne dla takich scen.
+- **Tagi typu „a photo with no signs” nie działały,** bo CLIP słabo rozumie przeczenia i 75% zdjęć wychodziło „ze znakiem”. Teraz każdy tag porównujemy z neutralnym opisem „a photo of a hiking trail in nature”.
+- **Dodano prompt „a photo of an asphalt road”,** który odrzucił 942 zdjęcia asfaltowych dróg.
+- **Próg 0,30 sprawdzono wzrokowo.** Przy `other ≥ 0,5` prawie wszystkie odrzucenia są słuszne, a w strefie 0,30–0,50 mniej więcej połowa. Wybraliśmy próg konserwatywny, bo szum w pozytywach szkodzi bardziej niż mniejsza liczba zdjęć.
+
+Wynik przed dociągnięciem pełnego Open Images:
+
+| Źródło | Surowe | Przechodzi CLIP |
+|---|---|---|
+| Mapillary | 6 895 | 82% (5 661) |
+| Wikimedia | 2 510 | 69% (1 730) |
+| Places365 | 20 350 | 63% (12 806) |
+| Unsplash | 5 711 | 61% (3 507) |
+| Open Images | 3 608 | 47% (1 704) |
+
+Mapillary ma najwyższy odsetek, co potwierdza, że filtr geograficzny OSM (≤20 m od ścieżki, ≥60 m od drogi) dobrze wybiera zdjęcia szlaków.
 
 ### 5.2 Normalizacja (`normalize.py`), czyli walka ze skrótami
 Model nie może rozpoznawać źródła po formacie, rozdzielczości ani metadanych. Dlatego **każde** zdjęcie (później tak samo negatywy):
@@ -212,7 +238,7 @@ Pełne zbieranie (kroki 1–5 możesz puścić równolegle w osobnych terminalac
 
 | # | Komenda | Czas (orientacyjnie) |
 |---|---|---|
-| 1 | `python -m collect.places365` | 30–90 min (26 GB strumienia) |
+| 1 | `python -m collect.places365` | ~10–20 min (~0,5 GB) |
 | 2 | `python -m collect.unsplash_lite` | 30–60 min |
 | 3 | `python -m collect.openimages` | 1–2 h |
 | 4 | `python -m collect.mapillary` | 1–3 h |
