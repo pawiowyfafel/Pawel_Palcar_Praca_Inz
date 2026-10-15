@@ -1,7 +1,0 @@
-source,test,test_ood,train,val,All
-mapillary,775,158,3239,786,4958
-openimages,239,6,1434,264,1943
-places365,1157,19,5432,1192,7800
-unsplash,515,35,2366,513,3429
-wikimedia,0,1162,0,0,1162
-All,2686,1380,12471,2755,19292

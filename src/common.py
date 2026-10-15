@@ -38,7 +38,14 @@ def cli_limit():
     """--limit N: maks. liczba NOWYCH zdjęć w tym uruchomieniu (do przebiegów testowych)."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=None)
-    return ap.parse_args().limit
+    return ap.parse_known_args()[0].limit
+
+
+def cli_choice(name, choices, default):
+    """Dodatkowa opcja wyboru, np. --set urban."""
+    ap = argparse.ArgumentParser()
+    ap.add_argument(f"--{name}", choices=choices, default=default)
+    return getattr(ap.parse_known_args()[0], name)
 
 
 def uid(source, source_id):
@@ -91,7 +98,18 @@ def load_all_meta():
     import pandas as pd
     frames = [pd.read_json(p, lines=True, dtype=False, convert_dates=False)
               for p in RAW.glob("*/meta.jsonl") if p.stat().st_size]
-    return pd.concat(frames, ignore_index=True)
+    df = pd.concat(frames, ignore_index=True)
+    # kolumny z mieszanymi typami skalarnymi (np. seed: "123" i 123) -> tekst, inaczej parquet odmawia zapisu
+    for c in df.columns[df.dtypes == object]:
+        if len({type(v) for v in df[c].dropna()} - {list}) > 1:
+            df[c] = df[c].map(_as_text)
+    return df
+
+
+def _as_text(v):
+    if v is None or isinstance(v, list) or (isinstance(v, float) and math.isnan(v)):
+        return v
+    return str(v)
 
 
 class UF:

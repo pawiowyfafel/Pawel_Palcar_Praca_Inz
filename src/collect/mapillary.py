@@ -10,7 +10,7 @@ import mercantile, numpy as np, requests, shapely
 from shapely.geometry import LineString
 from pyproj import Transformer
 from tqdm import tqdm
-from common import Meta, uid, get, S, RAW, cli_limit
+from common import Meta, uid, get, S, RAW, cli_limit, cli_choice
 
 H = {"Authorization": f"OAuth {os.environ['MAPILLARY_TOKEN']}"}
 API = "https://graph.mapillary.com/images"
@@ -39,6 +39,15 @@ REGIONS = {
     "alpy_julijskie":  (13.65, 46.25, 14.00, 46.45),
 }
 HOLDOUT = {"bieszczady"}
+# --mode city: negatywy "urban" z tych samych kamer co pozytywy (kontrola skrótów)
+CITY_REGIONS = {
+    "krakow":     (19.90, 50.03, 19.99, 50.08),
+    "wroclaw":    (16.99, 51.09, 17.07, 51.13),
+    "bratyslawa": (17.08, 48.13, 17.14, 48.16),
+    "lublana":    (14.48, 46.04, 14.53, 46.07),
+    "zakopane":   (19.93, 49.28, 19.98, 49.31),   # trudny negatyw: miasto w górach
+}
+CITY_ROAD_MAX_M, CITY_PER_SEQ, CITY_PER_REGION = 20, 3, 400
 PATHS = "path|footway|track|bridleway|steps"
 ROADS = ("motorway|trunk|primary|secondary|tertiary|unclassified|residential|service|"
          "living_street|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link")
@@ -117,8 +126,12 @@ def coords(im):
 
 def main():
     limit = cli_limit()
-    meta, rng = Meta("mapillary"), random.Random(0)
-    for region, bbox in REGIONS.items():
+    city = cli_choice("mode", ["trail", "city"], "trail") == "city"
+    regions = CITY_REGIONS if city else REGIONS
+    per_seq, per_region = (CITY_PER_SEQ, CITY_PER_REGION) if city else (PER_SEQ, PER_REGION)
+    extra = {"label": 0, "subclass": "urban"} if city else {}
+    meta, rng = Meta("mapillary_city" if city else "mapillary"), random.Random(0)
+    for region, bbox in regions.items():
         imgs = [im for im in cached(f"images_{region}", lambda: list_images(bbox))
                 if not im.get("is_pano") and im.get("camera_type") not in BAD_CAM and coords(im)]
         print(f"{region}: {len(imgs)} zdjęć w bboxie")
@@ -127,8 +140,12 @@ def main():
         xy = np.array([coords(im)[:2] for im in imgs])
         xs, ys = TR.transform(xy[:, 0], xy[:, 1])
         pts = shapely.points(xs, ys)
-        ok = (nearest(osm_lines(region, bbox, "paths", PATHS), pts, PATH_MAX_M) <= PATH_MAX_M) & \
-             (nearest(osm_lines(region, bbox, "roads", ROADS), pts, ROAD_MIN_M) >= ROAD_MIN_M)
+        road = nearest(osm_lines(region, bbox, "roads", ROADS), pts, max(ROAD_MIN_M, CITY_ROAD_MAX_M))
+        if city:                                   # odwrotny filtr: przy drodze
+            ok = road <= CITY_ROAD_MAX_M
+        else:
+            ok = (nearest(osm_lines(region, bbox, "paths", PATHS), pts, PATH_MAX_M) <= PATH_MAX_M) & \
+                 (road >= ROAD_MIN_M)
         by_seq = defaultdict(list)
         for im, k in zip(imgs, ok):
             if k:
@@ -136,10 +153,11 @@ def main():
         chosen = []
         for lst in by_seq.values():
             lst.sort(key=lambda x: x.get("captured_at") or 0)
-            chosen += lst[::max(1, len(lst) // PER_SEQ)][:PER_SEQ]
+            chosen += lst[::max(1, len(lst) // per_seq)][:per_seq]
         rng.shuffle(chosen)
-        chosen = chosen[:PER_REGION]
-        print(f"{region}: {int(ok.sum())} na szlaku, {len(by_seq)} sekwencji, biorę {len(chosen)}")
+        chosen = chosen[:per_region]
+        print(f"{region}: {int(ok.sum())} {'przy drodze' if city else 'na szlaku'}, "
+              f"{len(by_seq)} sekwencji, biorę {len(chosen)}")
 
         for im in tqdm(chosen, desc=region):
             if limit and meta.added >= limit:
@@ -162,7 +180,7 @@ def main():
                      lon=lon, lat=lat, camera_type=im.get("camera_type"),
                      captured_at=datetime.fromtimestamp(ts / 1000, timezone.utc).isoformat() if ts else None,
                      author=(im.get("creator") or {}).get("username"),
-                     license="CC BY-SA 4.0")
+                     license="CC BY-SA 4.0", **extra)
         if limit and meta.added >= limit:
             break
     meta.close()

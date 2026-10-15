@@ -16,3 +16,4 @@ fiftyone
 open_clip_torch
 # torch/torchvision CPU instaluj osobno:
 #   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+opencv-python-headless
