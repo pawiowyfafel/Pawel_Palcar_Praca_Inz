@@ -17,7 +17,7 @@ QUOTA = {  # pozytywy
          "places365": 8000, "mapillary": 5000, "unsplash": 4000, "openimages": 2000, "wikimedia": 1500,
          "own": BIG,
          # negatywy
-         "places365_urban": 2500, "mapillary_city": 1500, "coco": 1000, "memexgen": 2000,
+         "places365_ski": BIG, "places365_urban": 2500, "mapillary_city": 1500, "coco": 1000, "memexgen": 2000,
          "synth_meme": BIG, "synth_screen": BIG, "synth_manip": BIG, "kaggle_ai": BIG, "kaggle_inpaint": BIG}
 PER_GROUP = {"unsplash": 15, "wikimedia": 20, "mapillary": 6, "mapillary_city": 3}
 CLIP_OTHER_MAX, CLIP_TEXT_MAX, URBAN_TRAIL_MAX, MANIP_MIN_FRAC = 0.30, 0.5, 0.5, 0.005

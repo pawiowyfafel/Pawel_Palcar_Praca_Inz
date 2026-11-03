@@ -17,3 +17,10 @@ open_clip_torch
 # torch/torchvision CPU instaluj osobno:
 #   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 opencv-python-headless
+# trening i eksport (src/train)
+timm
+pyyaml
+scikit-learn
+onnx
+onnxruntime
+onnxconverter-common

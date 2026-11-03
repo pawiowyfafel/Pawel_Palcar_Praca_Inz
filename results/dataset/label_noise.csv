@@ -1,0 +1,17 @@
+source,probka,odrzucone,szum_%
+coco,200,0,0.0
+forgery,100,0,0.0
+kaggle_ai,100,0,0.0
+kaggle_inpaint,100,0,0.0
+mapillary,200,0,0.0
+mapillary_city,200,0,0.0
+memexgen,100,0,0.0
+openfake,100,0,0.0
+openimages,200,0,0.0
+places365,200,0,0.0
+places365_urban,200,0,0.0
+synth_manip,100,0,0.0
+synth_meme,100,0,0.0
+synth_screen,100,0,0.0
+unsplash,200,0,0.0
+wikimedia,200,0,0.0

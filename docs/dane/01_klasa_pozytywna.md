@@ -4,7 +4,7 @@ Stan źródeł sprawdzony 2026-10-08.
 
 ## 1. Czym jest „klasa pozytywna”
 
-Pozytyw (`label=1`, `subclass="nature"`) to **autentyczne, niezmienione zdjęcie zrobione w plenerze górskim, leśnym lub na szlaku**, takie, jakie realnie wyśle użytkownik aplikacji do zgłaszania warunków na szlaku.
+Pozytyw (`label=1`, `subclass="nature"`) to **autentyczne, niezmienione zdjęcie, jakie ludzie robią na wycieczce w góry lub do lasu**: krajobraz, szczyty, widoki, szlak, schronisko, ludzie w górach (także selfie i zdjęcia grupowe). **Widoczna ścieżka jest atutem, ale nie warunkiem** (doprecyzowanie z 2026-10-25).
 
 Do pozytywów celowo należą też **trudne pozytywy**, inaczej model odrzucałby prawdziwych użytkowników:
 ludzie na szlaku, schroniska i chatki, drogowskazy, mgła, zmierzch, śnieg, błoto, kałuże, powalone drzewa, mostki, zdjęcia pod słońce lub lekko poruszone.
@@ -61,6 +61,8 @@ Plan awaryjny: `collect/places365_hf.py` czyta mirror na Hugging Face. Ten mirro
 - infrastruktura szlakowa jako trudne pozytywy: `cabin/outdoor`, `chalet`, `hunting_lodge/outdoor`, `rope_bridge`, `campsite`.
 
 **Co zapisujemy:** `source_id` (ścieżka w archiwum), `places_class`, `license`, `group` (= samo zdjęcie, bo brak informacji o autorze).
+
+**Stoki narciarskie (od 2026-10-25):** osobne źródło `places365_ski`: `ski_slope` (1 000) i `ski_resort` (800) surowych, czyli 1 323 po filtrach. Pobierane: `python -m collect.places365 --set ski`.
 
 **Wady do opisania w pracy.** Rozdzielczość 256×256 (niższa niż w innych źródłach). Kategoria jest przypisana do sceny, a nie do szlaku, więc np. `valley` bywa widokiem z samochodu. Odfiltrowuje to CLIP i przegląd ręczny.
 
@@ -151,7 +153,9 @@ CLIP (Radford i in., 2021), w implementacji OpenCLIP: model ViT-B/32 trenowany n
 - tagi trudnych pozytywów: `tag_people`, `tag_fog`, `tag_night`, `tag_snow`, `tag_mud`, `tag_sign`, `tag_hut`;
 - `tag_text`: tekst lub watermark na zdjęciu.
 
-Odrzucamy zdjęcia z `other ≥ 0,30` lub `tag_text ≥ 0,5`. Tagi są **przybliżone**: służą do statystyk i ukierunkowania przeglądu, a nie jako prawda. Filtr CLIP sam wprowadza stronniczość selekcji (zostają zdjęcia „typowe” dla CLIP), co trzeba opisać w ograniczeniach.
+Odrzucamy zdjęcia z `other ≥ 0,30` lub `tag_text ≥ 0,5`.
+
+**Błąd znaleziony 2026-10-25 (do opisania w pracy):** znacznik tekstu porównywany ze stałym opisem „a photo of a hiking trail in nature” był zawyżony dla każdej sceny niewyglądającej jak ścieżka i odrzucił **5 231 pozytywów** (góry, schroniska, jeziora, stoki). Poprawka: tekst porównujemy z najlepiej pasującym opisem sceny danego zdjęcia, a próg kalibrujemy tak, by oznaczał ~1% najbardziej „tekstowych” pozytywów. CLIP okazał się słabym detektorem nałożonego tekstu (wykrywa ~30% memów syntetycznych przy 1% fałszywych alarmów), więc tekst w pozytywach wyłapuje głównie przegląd ręczny (widok A2). Efekt: pozytywów 21 167 zamiast 19 283. Znaczniki statystyczne (ludzie, mgła, noc…) są przybliżone i zawyżone dla scen niebędących ścieżką. Tagi są **przybliżone**: służą do statystyk i ukierunkowania przeglądu, a nie jako prawda. Filtr CLIP sam wprowadza stronniczość selekcji (zostają zdjęcia „typowe” dla CLIP), co trzeba opisać w ograniczeniach.
 
 Filtr działa w dwóch etapach. Najpierw liczy embeddingi obrazów: to wolne (~20 min na CPU dla 39 tys. zdjęć) i przyrostowe, czyli liczy tylko nowe zdjęcia. Potem ocenia te embeddingi promptami, co trwa sekundy (`python clip_filter.py --rescore`). Dzięki temu prompty można było dostroić po obejrzeniu wyników:
 - **„a screenshot” działał jak worek na wszystko.** Trafiały tam też trudne pozytywy: drogowskazy szlaku, jaskinie, nocne niebo w górach. Dodaliśmy prompty pozytywne dla takich scen.

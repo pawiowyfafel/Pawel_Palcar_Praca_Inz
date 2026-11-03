@@ -10,7 +10,7 @@ SEEDS = ["Category:Hiking trails in Poland", "Category:Hiking trails in Slovakia
          "Category:Hiking in Poland", "Category:Trails in Poland",
          "Category:Tatra Mountains", "Category:Beskid", "Category:Bieszczady"]
 BAD = re.compile(r"map|logo|diagram|drawing|painting|postcard|histor|aerial|panoram|video|"
-                 r"interior|church|hotel|ski|cable car|stamp|coat of arms|people", re.I)
+                 r"interior|church|hotel|stamp|coat of arms|people", re.I)   # ski: pozytyw od 2026-10-25
 MAX_DEPTH, MAX_FILES, WIDTH = 2, 2500, 960
 
 

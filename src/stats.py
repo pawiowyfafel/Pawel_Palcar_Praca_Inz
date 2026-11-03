@@ -19,5 +19,23 @@ if "captured_at" in df:
     pd.crosstab(pos.source, mon).to_csv(OUT / "pos_months.csv")
 pd.read_csv(INTERIM / "funnel.csv", index_col=0).to_csv(OUT / "funnel.csv")
 
+# szacowany szum etykiet: odsetek odrzuconych w losowych próbkach z przeglądu (widoki "C losowe – <źródło>")
+try:
+    import fiftyone as fo
+    if fo.dataset_exists("dataset_review"):
+        ds = fo.load_dataset("dataset_review")
+        rows = []
+        for name in ds.list_saved_views():
+            if name.startswith("C losowe - "):
+                v = ds.load_saved_view(name)
+                rej = len(v.match_tags("reject"))
+                rows.append({"source": name.split(" - ", 1)[1], "probka": len(v), "odrzucone": rej,
+                             "szum_%": round(100 * rej / max(1, len(v)), 1)})
+        noise = pd.DataFrame(rows)
+        noise.to_csv(OUT / "label_noise.csv", index=False)
+        print(noise.to_string(index=False))
+except ImportError:
+    pass
+
 print(pd.crosstab([df.label, df.subclass], df.split, margins=True))
 print((pos[tags] > 0.5).mean().round(3).sort_values())

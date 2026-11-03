@@ -42,14 +42,16 @@ URBAN = {
     # inne sceny niż szlak
     "s/stadium/soccer": 50, "p/playground": 60, "a/amusement_park": 40,
     "s/swimming_pool/outdoor": 40, "g/golf_course": 40, "b/beach": 100, "c/coast": 60, "o/ocean": 40,
-    # trudne negatywy: zieleń w mieście, stoki narciarskie (decyzja 2026-10-14)
+    # trudne negatywy: zieleń w mieście (decyzja 2026-10-14)
     "p/park": 250, "f/formal_garden": 120, "b/botanical_garden": 120, "l/lawn": 60, "y/yard": 60,
-    "c/campus": 60, "s/ski_resort": 100, "s/ski_slope": 100,
+    "c/campus": 60,
 }
-HARD = {"p/park", "f/formal_garden", "b/botanical_garden", "l/lawn", "y/yard", "c/campus",
-        "s/ski_resort", "s/ski_slope"}
+HARD = {"p/park", "f/formal_garden", "b/botanical_garden", "l/lawn", "y/yard", "c/campus"}
+# --set ski: stoki i ośrodki narciarskie = POZYTYWY (decyzja 2026-10-25: raporty warunków na stokach w Tatrach)
+SKI = {"s/ski_slope": 1000, "s/ski_resort": 800}
 SETS = {"nature": ("places365", CLASSES, {}),
-        "urban": ("places365_urban", URBAN, {"label": 0, "subclass": "urban"})}
+        "urban": ("places365_urban", URBAN, {"label": 0, "subclass": "urban"}),
+        "ski": ("places365_ski", SKI, {})}
 KEEP_P = 0.7          # losowe próbkowanie, by nie brać tylko pierwszych plików klasy
 PROBE, PREC = 128 * 1024, 2 * 1024 * 1024
 

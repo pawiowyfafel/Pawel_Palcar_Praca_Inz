@@ -25,16 +25,18 @@ GROUPS = {
     "nature": ["a photo of mountains", "a photo of a forest", "a photo of a mountain valley",
                "a photo of a waterfall", "a photo of a mountain meadow", "a photo of a mountain hut",
                "a photo of a mountain stream", "a photo of a rocky cliff", "a photo of a mountain lake",
-               "a photo of a foggy forest", "a photo of a night sky over mountains"],
+               "a photo of a foggy forest", "a photo of a night sky over mountains",
+               # stoki narciarskie = pozytyw (decyzja 2026-10-25), wcześniej w "other"
+               "a photo of a ski slope with skiers", "a photo of a ski resort in the mountains"],
     "other": ["a photo of a city street", "a photo of a building", "a photo of an indoor room",
               "a photo of a beach", "a photo of a car", "a screenshot", "a meme with text",
               "a map", "a painting", "a drawing", "an aerial drone photo",
               "a black and white historical photo", "a close-up portrait of a person",
-              "a photo of food", "a close-up photo of an animal", "a ski slope with skiers",
-              "a photo of an asphalt road"],
+              "a photo of food", "a close-up photo of an animal", "a photo of an asphalt road"],
 }
 # CLIP słabo rozumie przeczenia ("a photo with no signs"), więc tag porównujemy z neutralnym opisem
 NEUTRAL = "a photo of a hiking trail in nature"
+TEXT_OFFSET = 4.0     # kalibracja tag_text (patrz score())
 TAGS = {
     "people": "a photo of people on a trail",
     "fog":    "a foggy photo with low visibility",
@@ -105,11 +107,20 @@ def score(model, dev):
     ids = pd.read_parquet(INTERIM / "clip_emb_ids.parquet").id.values
     prompts = [p for g in GROUPS.values() for p in g]
     owner = np.array([g for g, ps in GROUPS.items() for _ in ps])
-    p = (100 * E @ enc(prompts).T).softmax(-1).cpu().numpy()
+    logits = 100 * E @ enc(prompts).T
+    p = logits.softmax(-1).cpu().numpy()
     out = {g: p[:, owner == g].sum(1) for g in GROUPS}
     out["top_prompt"] = np.array(prompts)[p.argmax(1)]
     for k, t in TAGS.items():
+        if k == "text":
+            continue
         out[f"tag_{k}"] = (100 * E @ enc([t, NEUTRAL]).T).softmax(-1)[:, 0].cpu().numpy()
+    # Tekst/watermark: porównanie z NAJLEPIEJ pasującym opisem sceny danego zdjęcia. Stały punkt odniesienia
+    # ("hiking trail") zawyżał wynik dla gór, schronisk i stoków i odrzucał ~12% pozytywów jako "tekst".
+    # Przesunięcie skalibrowane tak, by tag_text >= 0.5 oznaczało ~1% najbardziej "tekstowych" pozytywów
+    # (memy syntetyczne: ~30% wykrytych; CLIP słabo wykrywa nałożony tekst -> resztę łapie przegląd ręczny).
+    best = logits.max(-1).values
+    out["tag_text"] = torch.sigmoid(100 * E @ enc([TAGS["text"]])[0] - best + TEXT_OFFSET).cpu().numpy()
     res = pd.DataFrame(out)
     res.insert(0, "id", ids)
     res.to_parquet(INTERIM / "clip.parquet")

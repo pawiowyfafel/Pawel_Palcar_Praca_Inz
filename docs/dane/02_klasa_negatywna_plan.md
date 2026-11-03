@@ -191,6 +191,7 @@ Kaggle: 4 sesje (test, 1, 2, 3), łącznie ~7 h GPU. Inpainting SD 1.5: filtr NS
 
 ## 8. Decyzje (podjęte 2026-10-14)
 
+0. **Stoki i ośrodki narciarskie → POZYTYW** (decyzja 2026-10-25: raporty warunków na stokach w Tatrach są ważną częścią aplikacji). Usunięte z negatywów `urban`; nowe źródło pozytywów `places365_ski` (ski_slope, ski_resort); prompt narciarski w CLIP przeniesiony z „other” do pozytywów.
 1. **Park miejski i ogród → negatyw `urban` (trudny negatyw).** Ryzyko odrzucenia zgłoszenia z leśnego parku na skraju miasta opisujemy w dyskusji.
 2. **Zrzut ekranu prawdziwego zdjęcia szlaku → negatyw `meme`.** Zgłoszenie ma być zdjęciem z aparatu.
 3. **GPU → Kaggle Notebooks.** Token API Kaggle odblokuje też CASIA v2.

@@ -1,0 +1,38 @@
+# Plan eksperymentów. Każdy run = configs/base.yaml + nadpisania z grupy + ziarno.
+# Priorytety: P1 – niezbędne do wniosków pracy, P2 – ważne, P3 – jeśli starczy czasu GPU.
+# Szacowany czas na T4 (Kaggle): mobilne ~15–20 min/run, cnn ~20 min, effb3 ~45 min.
+seeds: [0, 1, 2]
+
+groups:
+  E1_modele:                      # PB1–PB3: porównanie architektur (głowica 5-klasowa, wszystkie dane)
+    priority: P1
+    runs:
+      - {model: cnn, lr: 1.0e-3, freeze_epochs: 0, epochs: 40, patience: 8}   # bez pretreningu
+      - {model: mnv3s}
+      - {model: mnv3l}
+      - {model: effl0}
+      - {model: effb3, batch_size: 64}                                        # referencja serwerowa
+
+  E2_glowica:                     # binarna vs 5-klasowa (powód flagi, reguła podklasowa)
+    priority: P2
+    runs:
+      - {model: effl0, head: binary}
+      - {model: mnv3l, head: binary}
+
+  E3_krzywa_ai:                   # PB4: ile obrazów AI w treningu? (punkt "wszystkie" = E1)
+    priority: P1
+    runs:
+      - {model: effl0, ai_train_n: 0}
+      - {model: effl0, ai_train_n: 250}
+      - {model: effl0, ai_train_n: 500}
+      - {model: effl0, ai_train_n: 750}
+      - {model: mnv3l, ai_train_n: 0}
+      - {model: mnv3s, ai_train_n: 0}
+      - {model: cnn, ai_train_n: 0, lr: 1.0e-3, freeze_epochs: 0, epochs: 40, patience: 8}
+
+  E4_rozdzielczosc:               # czy wyższa rozdzielczość pomaga wykrywać AI i manipulacje?
+    priority: P3
+    seeds: [0]
+    runs:
+      - {model: effl0, img_size: 160}
+      - {model: effl0, img_size: 288, batch_size: 96}

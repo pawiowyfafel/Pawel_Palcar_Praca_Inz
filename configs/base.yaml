@@ -1,0 +1,28 @@
+# Domyślna konfiguracja treningu (nadpisywana przez --set klucz=wartość lub configs/experiments.yaml)
+name: debug
+model: effl0              # cnn | mnv3s | mnv3l | effl0 | effb3   (patrz src/train/models.py)
+head: multi               # multi = 5 klas (nature/urban/meme/manipulated/ai) | binary = autentyczne vs naruszenie
+pretrained: true
+img_size: null            # null = domyślna dla modelu (cnn 160, mobilne 224, effb3 288)
+seed: 0
+ai_train_n: null          # krzywa uczenia: liczba obrazów AI w train (null = wszystkie ~850)
+val_exclude_subclasses: [ai] # early stopping na val BEZ obrazów AI – to samo kryterium wyboru modelu we wszystkich
+                             # eksperymentach (także krzywej uczenia z 0 AI); AI oceniane osobno jako scenariusz ataku
+
+# dane (Kaggle: /kaggle/input/<dataset>; lokalnie: data/pack/trail-dataset)
+data_root: data/pack/trail-dataset
+manifest: manifest.parquet
+out_dir: runs
+limit: null               # test techniczny: N zdjęć na split
+
+# optymalizacja
+batch_size: 128
+workers: 4
+freeze_epochs: 3          # etap 1: tylko klasyfikator (lr_head)
+epochs: 25                # etap 2: pełny fine-tuning (lr), maks.; early stopping
+lr_head: 1.0e-3
+lr: 2.0e-4
+weight_decay: 0.05
+warmup_frac: 0.05
+label_smoothing: 0.05
+patience: 5
