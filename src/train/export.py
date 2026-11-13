@@ -16,8 +16,10 @@ from train.data import CLASSES, TrailDataset, transforms
 from train.models import build
 
 
-def load(run):
+def load(run, data_root=None):
     cfg = json.loads((Path(run) / "config.json").read_text(encoding="utf-8"))
+    if data_root:                                         # inna sesja = inna ścieżka montowania datasetu
+        cfg["data_root"] = data_root
     nc = 1 if cfg["head"] == "binary" else len(CLASSES)
     model, _, mean, std = build(cfg["model"], nc, pretrained=False)
     model.load_state_dict(torch.load(Path(run) / "best.pt", map_location="cpu"))
@@ -91,11 +93,13 @@ def main():
     ap.add_argument("--calib", type=int, default=200)
     ap.add_argument("--check", type=int, default=500)
     ap.add_argument("--litert", action="store_true")
+    ap.add_argument("--data-root", default=None)
     a = ap.parse_args()
-    cfg, model, size, mean, std = load(a.run)
+    cfg, model, size, mean, std = load(a.run, a.data_root)
     out = Path(a.run) / "export"
     out.mkdir(exist_ok=True)
     _, calib_x = batches(cfg, "train", a.calib, size, mean, std)
+    np.save(out / "calib.npy", calib_x[:64].numpy())      # wejścia kalibracyjne dla litert_export.py
     chk_df, chk_x = batches(cfg, "test", a.check, size, mean, std, seed=1)
     y = (chk_df.label == 0).astype(int).values
     with torch.no_grad():

@@ -1,0 +1,34 @@
+/data/local/tmp/trail/benchmark_model --graph=/data/local/tmp/trail/effl0_int8dyn.tflite --warmup_runs=20 --num_runs=100 --report_peak_memory_footprint=true --num_threads=1 --use_xnnpack=true
+
+INFO: STARTING!
+INFO: Log parameter values verbosely: [0]
+INFO: Min num runs: [100]
+INFO: Num threads: [1]
+INFO: Min warmup runs: [20]
+INFO: Report the peak memory footprint: [1]
+INFO: Graph: [/data/local/tmp/trail/effl0_int8dyn.tflite]
+INFO: Signature to run: []
+INFO: #threads used for CPU inference: [1]
+INFO: Use xnnpack: [1]
+INFO: Loaded model /data/local/tmp/trail/effl0_int8dyn.tflite
+INFO: XNNPACK delegate created.
+INFO: Explicitly applied XNNPACK delegate, and the model graph will be partially executed by the delegate w/ 17 delegate kernels.
+INFO: The input model file size (MB): 3.78085
+INFO: Initialized session in 16.304ms.
+INFO: Running benchmark for at least 20 iterations and at least 0.5 seconds but terminate if exceeding 150 seconds.
+INFO: count=60 first=18937 curr=7940 min=7918 max=18937 avg=8305.03 std=1606 p5=7922 median=7949 p95=9817
+
+INFO: Running benchmark for at least 100 iterations and at least 1 seconds but terminate if exceeding 150 seconds.
+INFO: count=119 first=7994 curr=8468 min=7930 max=9919 avg=8391.61 std=243 p5=7958 median=8404 p95=8710
+
+INFO: Inference timings in us: Init: 16304, First inference: 18937, Warmup (avg): 8305.03, Inference (avg): 8391.61
+INFO: Note: as the benchmark tool itself affects memory footprint, the following is only APPROXIMATE to the actual memory footprint of the model at runtime. Take the information at your discretion.
+INFO: Memory footprint delta from the start of the tool (MB): init=17.4766 overall=25.0664
+INFO: Overall peak memory footprint (MB) via periodic monitoring: 33.6992
+INFO: Memory status at the end of exeution:
+INFO: - VmRSS              : 33 MB
+INFO: + RssAnnon           : 20 MB
+INFO: + RssFile + RssShmem : 13 MB
+INFO: Initialized TensorFlow Lite runtime.
+INFO: Created TensorFlow Lite XNNPACK delegate for CPU.
+VERBOSE: Replacing 50 out of 66 node(s) with delegate (TfLiteXNNPackDelegate) node, yielding 33 partitions for subgraph 0.

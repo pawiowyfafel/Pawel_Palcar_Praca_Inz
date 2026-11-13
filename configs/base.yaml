@@ -1,5 +1,6 @@
 # Domyślna konfiguracja treningu (nadpisywana przez --set klucz=wartość lub configs/experiments.yaml)
 name: debug
+group: debug              # grupa eksperymentu (E1_modele…) – grupowanie w W&B
 model: effl0              # cnn | mnv3s | mnv3l | effl0 | effb3   (patrz src/train/models.py)
 head: multi               # multi = 5 klas (nature/urban/meme/manipulated/ai) | binary = autentyczne vs naruszenie
 pretrained: true
@@ -14,6 +15,7 @@ data_root: data/pack/trail-dataset
 manifest: manifest.parquet
 out_dir: runs
 limit: null               # test techniczny: N zdjęć na split
+cache_dir: null           # cache uint8 z train/cache.py; ustawiony -> augmentacje na GPU, bez dekodowania JPEG w epoce
 
 # optymalizacja
 batch_size: 128
@@ -26,3 +28,8 @@ weight_decay: 0.05
 warmup_frac: 0.05
 label_smoothing: 0.05
 patience: 5
+
+# Weights & Biases (aktywne, gdy ustawiona zmienna WANDB_API_KEY; bez niej trening działa bez logowania)
+wandb: true
+wandb_project: praca-inz-trail
+wandb_entity: null        # null = domyślne konto właściciela klucza

@@ -9,7 +9,8 @@ import argparse, os, subprocess, sys, threading, time
 from pathlib import Path
 from train.experiments import ROOT, expand
 
-EST_MIN = {"cnn": 22, "mnv3s": 14, "mnv3l": 17, "effl0": 18, "effb3": 45}     # szacunek na T4
+# szacunek na T4 (cache + augmentacje GPU); po każdym runie podnoszony do zmierzonego czasu ×1,15
+EST_MIN = {"cnn": 12, "mnv3s": 9, "mnv3l": 10, "effl0": 13, "effb3": 40}
 
 
 def worker(gpu, runs, args, t_end, log):
@@ -20,6 +21,8 @@ def worker(gpu, runs, args, t_end, log):
             return
         sets = [f"{k}={v}" for k, v in o.items()] + [f"data_root={args.data_root}", f"out_dir={args.out}",
                                                      f"workers={args.workers}"]
+        if args.cache_dir:
+            sets.append(f"cache_dir={args.cache_dir}")
         t = time.time()
         with open(Path(args.out) / f"{name}.log", "w") as f:
             r = subprocess.run([sys.executable, "-m", "train.train", "--config", str(ROOT / "configs" / "base.yaml"),
@@ -27,8 +30,11 @@ def worker(gpu, runs, args, t_end, log):
             if r.returncode == 0:
                 subprocess.run([sys.executable, "-m", "train.evaluate", str(Path(args.out) / name)], env=env,
                                stdout=f, stderr=subprocess.STDOUT, cwd=ROOT / "src")
+        took = (time.time() - t) / 60
+        if r.returncode == 0:
+            EST_MIN[o["model"]] = max(EST_MIN[o["model"]], took * 1.15)
         log(f"[gpu{gpu}] {name}: {'OK' if r.returncode == 0 else 'BŁĄD ' + str(r.returncode)} "
-            f"({(time.time() - t) / 60:.1f} min)")
+            f"({took:.1f} min; szac. {o['model']} = {EST_MIN[o['model']]:.0f} min)")
 
 
 def main():
@@ -40,6 +46,7 @@ def main():
     ap.add_argument("--hours", type=float, default=11.0)
     ap.add_argument("--gpus", type=int, default=2)
     ap.add_argument("--workers", type=int, default=2, help="wątki DataLoadera na run (Kaggle: 4 CPU / 2 GPU)")
+    ap.add_argument("--cache-dir", default=None, help="cache uint8 z train/cache.py (augmentacje na GPU)")
     args = ap.parse_args()
     Path(args.out).mkdir(parents=True, exist_ok=True)
     runs = [r for r in expand(args.groups.split(",") if args.groups else None,

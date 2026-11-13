@@ -1,6 +1,6 @@
 # Modele i trening: opis, uzasadnienie, plan i instrukcja
 
-Stan: 2026-10-25. Kod gotowy i przetestowany technicznie (CPU, 160 zdjęć). Trening czeka na zakończenie przeglądu ręcznego zbioru.
+Stan: 2026-11-03. Przegląd ręczny zakończony (61 odrzuceń, szum etykiet 0–2%), zbiór końcowy 38 167 zdjęć, paczka `trail-dataset.zip` (2,7 GB, JPEG q=95) wgrywana na Kaggle. Kod przetestowany technicznie (CPU). Trening jeszcze nieuruchomiony.
 Materiał do rozdziałów 4 i 5 pracy.
 
 ## 1. Zadanie modelu
@@ -64,14 +64,25 @@ Biblioteka **timm** (PyTorch Image Models) daje wszystkie te architektury w jedn
   - **celowo bez rozmycia i szumu:** niszczą ślady generacji AI i manipulacji, które model ma wykrywać.
 - **Nierównowaga klas** (pozytywy ~21 tys., negatywy ~17 tys., AI tylko ~850 w train): wagi klas w funkcji straty zamiast dokładania danych.
 
+### Potok danych na GPU (zmiana po pierwszej sesji, 2026-11-05)
+
+W pierwszej próbie GPU było wykorzystane w 12–17%. Wąskim gardłem był procesor: Kaggle ma 4 rdzenie, a dekodowanie JPEG i augmentacje PIL dawały ~50 zdjęć/s na wątek. Do tego pierwsze czytanie danych z dysku sieciowego `/kaggle/input` zajęło ~20 min. Przy tym tempie plan P1 wymagałby ~40 h GPU.
+
+**Rozwiązanie:**
+1. **`train/cache.py`:** na początku sesji wszystkie zdjęcia są raz dekodowane do pliku uint8 N×256×256×3 (krótszy bok 256, środek 256×256; ~7,5 GB) na lokalnym dysku. Dwa treningi równolegle czytają ten sam plik z pamięci podręcznej systemu.
+2. **`train/gpu_aug.py`:** augmentacje całymi paczkami na GPU. Losowe przycięcie ze skalowaniem i odbiciem robi `affine_grid` + `grid_sample`; do tego jasność/kontrast/nasycenie, zmniejszenie rozdzielczości oraz kompresja JPEG (torchvision.io, na GPU). Ewaluacja: Resize(size/0,875) + CenterCrop(size), czyli środek 224 z cache'u, tak samo jak standardowy potok ImageNet i aplikacja na telefonie.
+3. **Wynik:** nawet licząc augmentacje na CPU, potok jest 3,7× szybszy (739 vs 200 zdjęć/s na rdzeń). Na GPU ograniczeniem jest już tylko obliczenie modelu.
+
+**Konsekwencje dla eksperymentów:** wszystkie modele trenujemy na wejściu 224 px (EfficientNet-B3 także, zamiast 288). Porównanie architektur odbywa się więc przy tej samej rozdzielczości, a w pracy warto to podkreślić jako uczciwe porównanie. Ablacja E4: 160 vs 256 px (maksimum przy cache'u 256). Zmiana `ColorJitter` (bez odcienia/hue) wynika z kosztu i nie zmienia sensu augmentacji.
+
 ## 4. Procedura treningu (`train/train.py`, `configs/base.yaml`)
 
 | Element | Ustawienie | Uzasadnienie |
 |---|---|---|
-| Transfer learning | etap 1: zamrożony backbone, 3 epoki, lr 1e-3 (tylko klasyfikator); etap 2: pełny fine-tuning, do 25 epok, lr 2e-4 | stabilny start nowej głowicy, potem dostrojenie cech |
+| Transfer learning | etap 1: zamrożony backbone **i jego statystyki BatchNorm**, 3 epoki, lr 1e-3 (tylko klasyfikator); etap 2: pełny fine-tuning, do 25 epok, lr 2e-4 | stabilny start nowej głowicy, potem dostrojenie cech |
 | Optymalizator | AdamW, weight decay 0,05 | standard dla CNN z timm |
 | Harmonogram | rozgrzewka 5% kroków + cosine | brak ręcznego dobierania spadków lr |
-| Funkcja straty | CrossEntropy z wagami klas i label smoothing 0,05 (5 klas); BCE z `pos_weight` (binarna) | nierównowaga klas, mniejsza nadmierna pewność |
+| Funkcja straty | własna CrossEntropy: wagi klas √(1/liczność) (szlak 0,65 … AI 2,58; klasa bez przykładów = 0) na składniku głównym + **jednolite** wygładzanie etykiet 0,05 na klasy obecne w treningu; BCE z `pos_weight` (binarna) | nierównowaga klas bez przesadnego faworyzowania rzadkiej klasy AI; patrz niżej |
 | Precyzja | mixed precision (FP16) na GPU | ~2× szybciej na T4 |
 | Early stopping | ROC-AUC `p_violation` na val **bez obrazów AI**, cierpliwość 5 epok | **to samo kryterium wyboru modelu we wszystkich eksperymentach**, także w krzywej uczenia z 0 obrazami AI; AI oceniane osobno jako scenariusz ataku |
 | Powtórzenia | 3 ziarna (0, 1, 2) | wyniki jako średnia ± odchylenie |
@@ -79,6 +90,12 @@ Biblioteka **timm** (PyTorch Image Models) daje wszystkie te architektury w jedn
 | Reprodukowalność | `config.json` w każdym runie: pełna konfiguracja, hash MD5 manifestu, liczba obrazów AI, złożoność modelu | odtworzenie dowolnego wyniku |
 
 Wynik runu: `runs/<nazwa>/` z plikami `config.json`, `epochs.csv` (krzywe uczenia), `best.pt`, `preds.parquet` (predykcje dla val, test, test_ood i test_real, z podklasą, źródłem i generatorem), `summary.json`, `eval.json` i `decisions.csv`. **Cała ocena odbywa się offline z `preds.parquet`**, więc progi i reguły można zmieniać bez ponownego treningu.
+
+**Dwa błędy wykryte w pierwszej pełnej sesji (2026-11-05), poprawione przed właściwym treningiem:**
+1. **`nn.CrossEntropyLoss(weight=…, label_smoothing=…)` waży wagami klas także składnik wygładzania.** Przy rzadkiej klasie AI (duża waga) pcha to model do przypisywania prawdopodobieństwa „AI” każdemu zdjęciu, a przy treningu bez AI (krzywa uczenia, punkt 0) drastycznie: strata ~12,6 zamiast ~1,6, val AUC ~0,50 przez pierwsze epoki. Rozwiązanie: własna funkcja straty z jednolitym wygładzaniem tylko na klasy obecne w treningu i łagodniejsze wagi (pierwiastek z odwrotności liczności).
+2. **NaN w EfficientNet-B3:** w etapie 1 BatchNorm zamrożonego backbone aktualizował statystyki. Prawdopodobnie jedna paczka z przepełnieniem FP16 psuła je trwale. Rozwiązanie: BatchNorm w trybie eval w etapie 1, pomijanie paczek z niesk. stratą (przerwanie przy >20%) i `nan_to_num` w predykcjach.
+
+To dobry materiał do rozdziału 4 (pułapki implementacyjne) i argument za śledzeniem eksperymentów w W&B: oba błędy były widoczne od razu na krzywych uczenia.
 
 ## 5. Gdzie i jak trenujemy
 
@@ -96,6 +113,19 @@ Wynik runu: `runs/<nazwa>/` z plikami `config.json`, `epochs.csv` (krzywe uczeni
   | EfficientNet-B3 | ~45 min |
 
   Do zweryfikowania w pierwszej sesji, bo wąskim gardłem może być dekodowanie JPEG na 4 rdzeniach.
+
+### Śledzenie eksperymentów: Weights & Biases
+
+Projekt W&B **`praca-inz-trail`**, a każdy run treningowy to osobny run W&B (`src/train/wb.py`):
+- **konfiguracja:** pełny config + hash manifestu, złożoność modelu, liczba obrazów AI;
+- **grupa** = eksperyment (E1_modele, E2_glowica, E3_krzywa_ai, E4_rozdzielczosc);
+- **tagi:** model, głowica, `ai<N>`, ziarno, rozdzielczość;
+- **co epokę:** `train/loss`, `val/auc_bez_ai`, `lr`, czas;
+- **po ocenie** (`evaluate.py` dołącza do tego samego runu): progi `t_przepusc` i `t_blokuj`, ROC-AUC i PR-AUC (z 95% CI) dla każdego zbioru, metryki asystenta moderatora (pokrycie, obciążenie moderacji, błędne blokady, przepuszczone naruszenia) oraz tabela `decyzje_per_podklasa`;
+- **po teście odporności:** tabela `odpornosc` i AUC dla każdej degradacji.
+
+**Klucz:** zmienna `WANDB_API_KEY`. Na Kaggle brana jest z sekretu Kaggle o tej nazwie (*Add-ons → Secrets*), a jeśli go nie ma, z lokalnego `.env` (wartość wklejana do prywatnego notebooka w `data/`, poza gitem).
+**Bez klucza** albo bez sieci trening działa normalnie, tylko bez logowania. Lokalne pliki (`epochs.csv`, `preds.parquet`, `eval.json`) są zawsze zapisywane i to one są źródłem prawdy dla tabel w pracy.
 
 ## 6. Plan eksperymentów (`configs/experiments.yaml`)
 
@@ -138,7 +168,7 @@ Kroki w PowerShellu, z `Pawel_Palcar_Praca_Inz\src`:
    ..\.venv\Scripts\python.exe split.py
    ..\.venv\Scripts\python.exe stats.py
    ```
-2. **Paczka:** `..\.venv\Scripts\python.exe pack_dataset.py` tworzy `data/pack/trail-dataset.zip` (~1–1,5 GB).
+2. **Paczka:** `..\.venv\Scripts\python.exe pack_dataset.py` tworzy `data/pack/trail-dataset.zip` (2,7 GB przy JPEG q=95; wysoka jakość zachowuje ślady AI i manipulacji).
 3. **Upload na Kaggle** jako prywatny dataset `trail-dataset` (CLI z tokenem albo przeglądarka).
 4. **Notebook:** `python kaggle/make_train_kernel.py --session 1 --priority P1`, a następnie `kaggle kernels push -p data/kaggle/train_s1`.
 5. **Pobranie** `runs.zip` (`kaggle kernels output …`) i rozpakowanie do `runs/`.

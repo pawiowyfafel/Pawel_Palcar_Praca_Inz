@@ -1,6 +1,6 @@
 source,probka,odrzucone,szum_%
-coco,200,0,0.0
-forgery,100,0,0.0
+coco,200,3,1.5
+forgery,100,2,2.0
 kaggle_ai,100,0,0.0
 kaggle_inpaint,100,0,0.0
 mapillary,200,0,0.0
@@ -8,8 +8,9 @@ mapillary_city,200,0,0.0
 memexgen,100,0,0.0
 openfake,100,0,0.0
 openimages,200,0,0.0
-places365,200,0,0.0
-places365_urban,200,0,0.0
+places365,200,1,0.5
+places365_ski,200,0,0.0
+places365_urban,200,2,1.0
 synth_manip,100,0,0.0
 synth_meme,100,0,0.0
 synth_screen,100,0,0.0

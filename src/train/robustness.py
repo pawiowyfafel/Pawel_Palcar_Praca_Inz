@@ -14,6 +14,7 @@ from sklearn.metrics import roc_auc_score
 from train.data import CLASSES
 from train.evaluate import decide
 from train.models import build
+from train import wb
 from torchvision import transforms as T
 
 
@@ -45,6 +46,7 @@ def main():
     ap.add_argument("run")
     ap.add_argument("--split", default="test")
     ap.add_argument("--n", type=int, default=3000)
+    ap.add_argument("--data-root", default=None, help="inna sesja = inna ścieżka montowania datasetu")
     a = ap.parse_args()
     run = Path(a.run)
     cfg = json.loads((run / "config.json").read_text(encoding="utf-8"))
@@ -55,7 +57,7 @@ def main():
     model.load_state_dict(torch.load(run / "best.pt", map_location=dev))
     model.to(dev).eval()
     tf = T.Compose([T.Resize(int(round(size / 0.875))), T.CenterCrop(size), T.ToTensor(), T.Normalize(mean, std)])
-    root = Path(cfg["data_root"])
+    root = Path(a.data_root or cfg["data_root"])
     df = pd.read_parquet(root / cfg["manifest"])
     df = df[df.split == a.split].sample(min(a.n, (df.split == a.split).sum()), random_state=0).reset_index(drop=True)
     y = (df.label == 0).astype(int).values
@@ -84,6 +86,12 @@ def main():
                      "obciazenie_moderacji": float((dec == "flaguj").mean())})
         print(rows[-1], flush=True)
     pd.DataFrame(rows).to_csv(run / "robustness.csv", index=False)
+    w = wb.resume(run, "robustness")
+    if w:
+        import wandb
+        w.log({"odpornosc": wandb.Table(dataframe=pd.DataFrame(rows))})
+        w.summary.update({f"odpornosc/{r['degradacja']}/roc_auc": r["roc_auc"] for r in rows})
+        w.finish()
 
 
 if __name__ == "__main__":

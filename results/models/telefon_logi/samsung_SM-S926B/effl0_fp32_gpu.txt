@@ -1,0 +1,37 @@
+/data/local/tmp/trail/benchmark_model --graph=/data/local/tmp/trail/effl0_fp32.tflite --warmup_runs=20 --num_runs=100 --report_peak_memory_footprint=true --num_threads=4 --use_gpu=true
+
+INFO: STARTING!
+INFO: Log parameter values verbosely: [0]
+INFO: Min num runs: [100]
+INFO: Num threads: [4]
+INFO: Min warmup runs: [20]
+INFO: Report the peak memory footprint: [1]
+INFO: Graph: [/data/local/tmp/trail/effl0_fp32.tflite]
+INFO: Signature to run: []
+INFO: #threads used for CPU inference: [4]
+INFO: Use gpu: [1]
+INFO: Loaded model /data/local/tmp/trail/effl0_fp32.tflite
+INFO: GPU delegate created.
+INFO: Loaded OpenCL library with dlopen.
+INFO: Explicitly applied GPU delegate, and the model graph will be completely executed by the delegate.
+INFO: The input model file size (MB): 13.5333
+INFO: Initialized session in 905.183ms.
+INFO: Running benchmark for at least 20 iterations and at least 0.5 seconds but terminate if exceeding 150 seconds.
+INFO: count=84 first=6668 curr=5112 min=4649 max=10056 avg=5860.81 std=1063 p5=4701 median=5525 p95=7890
+
+INFO: Running benchmark for at least 100 iterations and at least 1 seconds but terminate if exceeding 150 seconds.
+INFO: count=172 first=4678 curr=6130 min=4448 max=6733 avg=5579.06 std=427 p5=4839 median=5563 p95=6344
+
+INFO: Inference timings in us: Init: 905183, First inference: 6668, Warmup (avg): 5860.81, Inference (avg): 5579.06
+INFO: Note: as the benchmark tool itself affects memory footprint, the following is only APPROXIMATE to the actual memory footprint of the model at runtime. Take the information at your discretion.
+INFO: Memory footprint delta from the start of the tool (MB): init=107.578 overall=107.578
+INFO: Overall peak memory footprint (MB) via periodic monitoring: 116.176
+INFO: Memory status at the end of exeution:
+INFO: - VmRSS              : 102 MB
+INFO: + RssAnnon           : 39 MB
+INFO: + RssFile + RssShmem : 63 MB
+INFO: Initialized TensorFlow Lite runtime.
+INFO: Created TensorFlow Lite delegate for GPU.
+VERBOSE: Replacing 66 out of 66 node(s) with delegate (TfLiteGpuDelegateV2) node, yielding 1 partitions for subgraph 0.
+INFO: Initialized OpenCL-based API.
+INFO: Created 1 GPU delegate kernels.

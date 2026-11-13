@@ -15,6 +15,7 @@ from pathlib import Path
 import numpy as np, pandas as pd
 from sklearn.metrics import average_precision_score, roc_auc_score
 from train.data import OBVIOUS
+from train import wb
 
 DECISIONS = ["przepusc", "flaguj", "zablokuj"]
 
@@ -79,6 +80,12 @@ def evaluate_run(run, fbr, miss, boot=True):
     Path(run, "eval.json").write_text(json.dumps(res, indent=1, ensure_ascii=False))
     dec = pd.DataFrame(rows)
     dec.to_csv(Path(run, "decisions.csv"), index=False)
+    w = wb.resume(run, "eval")
+    if w:                                       # wyniki oceny dopisane do runu treningu
+        import wandb
+        w.summary.update({"t_przepusc": t_acc, "t_blokuj": t_blk, **wb.flat("", res["splits"])})
+        w.log({"decyzje_per_podklasa": wandb.Table(dataframe=dec)})
+        w.finish()
     return res, dec
 
 

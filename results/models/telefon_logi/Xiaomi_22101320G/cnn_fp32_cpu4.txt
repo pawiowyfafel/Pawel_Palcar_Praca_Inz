@@ -1,0 +1,34 @@
+/data/local/tmp/trail/benchmark_model --graph=/data/local/tmp/trail/cnn_fp32.tflite --warmup_runs=20 --num_runs=100 --report_peak_memory_footprint=true --num_threads=4 --use_xnnpack=true
+
+INFO: STARTING!
+INFO: Log parameter values verbosely: [0]
+INFO: Min num runs: [100]
+INFO: Num threads: [4]
+INFO: Min warmup runs: [20]
+INFO: Report the peak memory footprint: [1]
+INFO: Graph: [/data/local/tmp/trail/cnn_fp32.tflite]
+INFO: Signature to run: []
+INFO: #threads used for CPU inference: [4]
+INFO: Use xnnpack: [1]
+INFO: Loaded model /data/local/tmp/trail/cnn_fp32.tflite
+INFO: XNNPACK delegate created.
+INFO: Explicitly applied XNNPACK delegate, and the model graph will be completely executed by the delegate.
+INFO: The input model file size (MB): 1.60898
+INFO: Initialized session in 6.323ms.
+INFO: Running benchmark for at least 20 iterations and at least 0.5 seconds but terminate if exceeding 150 seconds.
+INFO: count=219 first=4484 curr=2212 min=2116 max=6852 avg=2240.22 std=433 p5=2123 median=2178 p95=2248
+
+INFO: Running benchmark for at least 100 iterations and at least 1 seconds but terminate if exceeding 150 seconds.
+INFO: count=451 first=2229 curr=2128 min=2094 max=2297 avg=2173.06 std=35 p5=2120 median=2176 p95=2228
+
+INFO: Inference timings in us: Init: 6323, First inference: 4484, Warmup (avg): 2240.22, Inference (avg): 2173.06
+INFO: Note: as the benchmark tool itself affects memory footprint, the following is only APPROXIMATE to the actual memory footprint of the model at runtime. Take the information at your discretion.
+INFO: Memory footprint delta from the start of the tool (MB): init=9.38281 overall=9.89844
+INFO: Overall peak memory footprint (MB) via periodic monitoring: 19.1953
+INFO: Memory status at the end of exeution:
+INFO: - VmRSS              : 19 MB
+INFO: + RssAnnon           : 7 MB
+INFO: + RssFile + RssShmem : 12 MB
+INFO: Initialized TensorFlow Lite runtime.
+INFO: Created TensorFlow Lite XNNPACK delegate for CPU.
+VERBOSE: Replacing 17 out of 17 node(s) with delegate (TfLiteXNNPackDelegate) node, yielding 1 partitions for subgraph 0.

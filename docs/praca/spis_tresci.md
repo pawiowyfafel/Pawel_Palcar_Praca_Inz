@@ -252,6 +252,8 @@ Co osiągnięto (zbiór, porównanie, wnioski). Kierunki rozwoju: większa rozdz
 
 ## Bibliografia
 
+Pełna lista źródeł, zbiorów, modeli i narzędzi z linkami: [bibliografia.md](bibliografia.md).
+
 Ok. 40–60 pozycji. Obowiązkowo: Places365, Open Images, COCO, CLIP/OpenCLIP, MobileNetV3, EfficientNet, LiteRT/TFLite i kwantyzacja, LaMa, Stable Diffusion/SDXL, PixArt-Σ, DEFACTO, IMD2020, CocoGlide/TruFor, Community Forensics, OpenFake, VCT², GenImage (bias formatu), shortcut learning (Geirhos i in.), Grad-CAM.
 
 ## Załączniki (poza limitem stron)

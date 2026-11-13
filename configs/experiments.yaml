@@ -1,6 +1,7 @@
 # Plan eksperymentów. Każdy run = configs/base.yaml + nadpisania z grupy + ziarno.
 # Priorytety: P1 – niezbędne do wniosków pracy, P2 – ważne, P3 – jeśli starczy czasu GPU.
-# Szacowany czas na T4 (Kaggle): mobilne ~15–20 min/run, cnn ~20 min, effb3 ~45 min.
+# Czas na T4 z cache'em i augmentacjami na GPU: EST_MIN w src/train/runqueue.py (aktualizowany w trakcie).
+# Wszystkie modele na wejściu 224 px (cache 256×256), CNN 160 px – porównanie przy tej samej rozdzielczości.
 seeds: [0, 1, 2]
 
 groups:
@@ -11,7 +12,7 @@ groups:
       - {model: mnv3s}
       - {model: mnv3l}
       - {model: effl0}
-      - {model: effb3, batch_size: 64}                                        # referencja serwerowa
+      - {model: effb3, img_size: 224, batch_size: 96}                         # referencja serwerowa (224 jak reszta)
 
   E2_glowica:                     # binarna vs 5-klasowa (powód flagi, reguła podklasowa)
     priority: P2
@@ -35,4 +36,4 @@ groups:
     seeds: [0]
     runs:
       - {model: effl0, img_size: 160}
-      - {model: effl0, img_size: 288, batch_size: 96}
+      - {model: effl0, img_size: 256, batch_size: 96}                         # maks. przy cache'u 256 px

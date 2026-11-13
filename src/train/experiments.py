@@ -29,7 +29,7 @@ def expand(groups=None, priority=None, path=ROOT / "configs" / "experiments.yaml
         for o in gs["runs"]:
             for s in gs.get("seeds", spec["seeds"]):
                 name = run_name(g, o, s)
-                out.append((name, {**o, "seed": s, "name": name}))
+                out.append((name, {**o, "seed": s, "name": name, "group": g}))
     return out
 
 

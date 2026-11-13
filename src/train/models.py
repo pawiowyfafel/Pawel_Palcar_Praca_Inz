@@ -56,6 +56,15 @@ def set_backbone_trainable(model, trainable):
             p.requires_grad = trainable
 
 
+def freeze_backbone_bn(model):
+    """Etap 1: zamrożony backbone ma też zamrożone statystyki BatchNorm (tryb eval). Inaczej jedna paczka
+    z przepełnieniem FP16 może trwale zepsuć running_mean/var -> NaN w każdej predykcji (EfficientNet-B3)."""
+    head = set(id(m) for m in model.get_classifier().modules())
+    for m in model.modules():
+        if isinstance(m, nn.modules.batchnorm._BatchNorm) and id(m) not in head:
+            m.eval()
+
+
 def complexity(model, size):
     model.eval()
     params = sum(p.numel() for p in model.parameters())

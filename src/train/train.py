@@ -12,8 +12,10 @@ from pathlib import Path
 import numpy as np, pandas as pd, torch, yaml
 from sklearn.metrics import roc_auc_score
 from torch.utils.data import DataLoader
-from train.data import CLASSES, TrailDataset, class_weights, load_manifest, transforms
-from train.models import build, complexity, set_backbone_trainable
+from train.data import CLASSES, CachedDataset, TrailDataset, class_weights, load_manifest, transforms
+from train.gpu_aug import GPUAugment
+from train.models import build, complexity, freeze_backbone_bn, set_backbone_trainable
+from train import wb
 
 EVAL_SPLITS = ["val", "test", "test_ood", "test_real"]
 
@@ -50,6 +52,17 @@ def seed_all(s):
     torch.cuda.manual_seed_all(s)
 
 
+def weighted_ce(logits, y, w, present, eps):
+    """CrossEntropy z wagami klas i JEDNOLITYM wygładzaniem etykiet na klasy obecne w treningu.
+    (nn.CrossEntropyLoss(weight=, label_smoothing=) waży też składnik wygładzania wagami klas – przy rzadkiej
+    klasie AI pcha to model do przypisywania "AI" każdemu zdjęciu; przy 0 obrazach AI – drastycznie.)"""
+    logp = logits.float().log_softmax(1)
+    nll = -logp.gather(1, y[:, None]).squeeze(1)
+    smooth = -logp[:, present].mean(1)
+    wy = w[y]
+    return (wy * ((1 - eps) * nll + eps * smooth)).sum() / wy.sum()
+
+
 def violation_prob(logits, head):
     if head == "binary":
         return torch.sigmoid(logits.squeeze(1)), None
@@ -58,13 +71,17 @@ def violation_prob(logits, head):
 
 
 @torch.no_grad()
-def predict(model, loader, head, dev, amp):
+def predict(model, loader, head, dev, amp, aug=None):
     model.eval()
     pv, pc, idx = [], [], []
     for x, _, i in loader:
+        x = x.to(dev, non_blocking=True)
+        if aug is not None:
+            x = aug(x)
         with torch.autocast(dev.type, dtype=torch.float16, enabled=amp):
-            out = model(x.to(dev, non_blocking=True))
+            out = model(x)
         v, p = violation_prob(out.float(), head)
+        v = torch.nan_to_num(v, nan=0.5)                    # zabezpieczenie: NaN nie wywraca oceny
         pv.append(v.cpu())
         idx.append(i)
         if p is not None:
@@ -73,7 +90,9 @@ def predict(model, loader, head, dev, amp):
 
 
 def make_loader(df, root, tf, head, cfg, shuffle):
-    return DataLoader(TrailDataset(df, root, tf, head), batch_size=cfg["batch_size"], shuffle=shuffle,
+    ds = (CachedDataset(df, Path(cfg["cache_dir"]) / "images.npy", head) if cfg.get("cache_dir")
+          else TrailDataset(df, root, tf, head))
+    return DataLoader(ds, batch_size=cfg["batch_size"], shuffle=shuffle,
                       num_workers=cfg["workers"], pin_memory=torch.cuda.is_available(), drop_last=shuffle,
                       persistent_workers=cfg["workers"] > 0)
 
@@ -101,15 +120,24 @@ def main():
     va_stop = va[~va.subclass.isin(cfg.get("val_exclude_subclasses") or [])]   # kryterium early stoppingu
     tl = make_loader(tr, root, transforms(size, mean, std, True), head, cfg, True)
     vl = make_loader(va_stop, root, transforms(size, mean, std, False), head, cfg, False)
+    # z cache'em: augmentacje i przygotowanie wejścia na GPU (dane w loaderze to surowe uint8 256×256)
+    aug_tr = GPUAugment(size, mean, std, True) if cfg.get("cache_dir") else None
+    aug_ev = GPUAugment(size, mean, std, False) if cfg.get("cache_dir") else None
 
-    w = class_weights(df, head).to(dev)
-    crit = (torch.nn.BCEWithLogitsLoss(pos_weight=w) if head == "binary"
-            else torch.nn.CrossEntropyLoss(weight=w, label_smoothing=cfg["label_smoothing"]))
+    w, present = class_weights(df, head)
+    w = w.to(dev)
+    if head == "binary":
+        bce = torch.nn.BCEWithLogitsLoss(pos_weight=w)
+        crit = lambda logits, y: bce(logits.float().squeeze(1), y)
+    else:
+        present = present.to(dev)
+        crit = lambda logits, y: weighted_ce(logits, y, w, present, cfg["label_smoothing"])
     scaler = torch.amp.GradScaler(enabled=amp)
     meta = {"manifest_md5": hashlib.md5(manifest.read_bytes()).hexdigest(), "img_size": size,
             "n_train": len(tr), "n_train_ai": int((tr.subclass == "ai").sum()), "device": str(dev),
             **complexity(build(cfg["model"], nc, pretrained=False)[0], size)}
     (out / "config.json").write_text(json.dumps({**cfg, **meta}, indent=1, ensure_ascii=False))
+    run = wb.init(cfg, meta, out)
 
     def optimizer(stage):
         lr = cfg["lr_head"] if stage == 1 else cfg["lr"]
@@ -133,25 +161,38 @@ def main():
             steps_stage = cfg["epochs"] * len(tl)
             sched = torch.optim.lr_scheduler.LambdaLR(opt, lambda s: cosine(s, steps_stage, cfg["warmup_frac"]))
         model.train()
-        tot, n = 0.0, 0
+        if stage == 1:
+            freeze_backbone_bn(model)
+        tot, n, skipped = 0.0, 0, 0
         for x, y, _ in tl:
             x, y = x.to(dev, non_blocking=True), y.to(dev, non_blocking=True)
+            if aug_tr is not None:
+                x = aug_tr(x)
             with torch.autocast(dev.type, dtype=torch.float16, enabled=amp):
                 logits = model(x)
-                loss = crit(logits.squeeze(1), y) if head == "binary" else crit(logits, y)
+            loss = crit(logits, y)
             opt.zero_grad(set_to_none=True)
+            if not torch.isfinite(loss):                    # przepełnienie FP16 itp.: pomiń paczkę
+                skipped += 1
+                if skipped > 0.2 * len(tl):
+                    raise RuntimeError(f"niestabilny trening: {skipped} paczek z NaN/inf w epoce {ep}")
+                continue
             scaler.scale(loss).backward()
             scaler.step(opt)
             scaler.update()
             sched.step()
             tot, n = tot + loss.item() * len(x), n + len(x)
-        idx, pv, _ = predict(model, vl, head, dev, amp)
+        idx, pv, _ = predict(model, vl, head, dev, amp, aug_ev)
         yv = (va_stop.label.values[idx] == 0).astype(int)
         auc = roc_auc_score(yv, pv) if 0 < yv.sum() < len(yv) else float("nan")
-        hist.append({"epoch": ep, "stage": stage, "train_loss": tot / max(1, n), "val_auc": auc,
+        hist.append({"epoch": ep, "stage": stage, "train_loss": tot / max(1, n), "val_auc": auc, "skipped": skipped,
                      "lr": opt.param_groups[0]["lr"], "time_s": round(time.time() - t0, 1)})
         pd.DataFrame(hist).to_csv(out / "epochs.csv", index=False)
         print(f"[{cfg['name']}] ep {ep:2d} st{stage} loss {tot / max(1, n):.4f} val_auc {auc:.4f}", flush=True)
+        if run:
+            h = hist[-1]
+            run.log({"epoch": ep, "stage": stage, "train/loss": h["train_loss"], "val/auc_bez_ai": auc,
+                     "lr": h["lr"], "time_min": h["time_s"] / 60}, step=ep)
         if stage == 2 or cfg["freeze_epochs"] == 0:
             if auc > best:
                 best, bad = auc, 0
@@ -165,7 +206,7 @@ def main():
     model.load_state_dict(torch.load(out / "best.pt", map_location=dev))
     ev = df[df.split.isin(EVAL_SPLITS)].reset_index(drop=True)
     idx, pv, pc = predict(model, make_loader(ev, root, transforms(size, mean, std, False), head, cfg, False),
-                          head, dev, amp)
+                          head, dev, amp, aug_ev)
     keep = [c for c in ["id", "split", "label", "subclass", "source", "gen", "manip", "meme_style", "region"]
             if c in ev]
     preds = ev.iloc[idx][keep].reset_index(drop=True).assign(p_violation=pv)
@@ -176,6 +217,9 @@ def main():
     summary = {"name": cfg["name"], "best_val_auc": best, "epochs_run": len(hist),
                "train_min": round((time.time() - t0) / 60, 1), **meta}
     (out / "summary.json").write_text(json.dumps(summary, indent=1))
+    if run:
+        run.summary.update({"best_val_auc_bez_ai": best, "epochs_run": len(hist), "train_min": summary["train_min"]})
+        run.finish()
     print("gotowe:", summary)
 
 

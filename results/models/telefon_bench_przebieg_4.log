@@ -1,0 +1,16 @@
+﻿
+=== Xiaomi 22101320G (SM7325, Android 14, arm64-v8a, 7.0 GB)
+cnn    fp32     cpu2  avg    3.84 ms ± 0.03  [TfLiteXNNPackDelegate:17/17]
+cnn    int8dyn  cpu2  avg    6.26 ms ± 0.66  [TfLiteXNNPackDelegate:13/17]
+cnn    int8     cpu2  avg    1.45 ms ± 0.03  [TfLiteXNNPackDelegate:20/20]
+mnv3s  fp32     cpu2  avg    2.98 ms ± 0.06  [TfLiteXNNPackDelegate:113/113]
+mnv3s  int8dyn  cpu2  avg   17.52 ms ± 2.39  [TfLiteXNNPackDelegate:102/113]
+mnv3s  int8     cpu2  avg    2.49 ms ± 0.06  [TfLiteXNNPackDelegate:166/176]
+mnv3l  fp32     cpu2  avg    9.64 ms ± 0.33  [TfLiteXNNPackDelegate:126/126]
+mnv3l  int8dyn  cpu2  avg   30.21 ms ± 6.92  [TfLiteXNNPackDelegate:111/126]
+mnv3l  int8     cpu2  avg    5.78 ms ± 0.09  [TfLiteXNNPackDelegate:174/188]
+effl0  fp32     cpu2  avg   15.30 ms ± 0.40  [TfLiteXNNPackDelegate:66/66]
+effl0  int8dyn  cpu2  avg   49.72 ms ± 5.56  [TfLiteXNNPackDelegate:50/66]
+effl0  int8     cpu2  avg    6.73 ms ± 0.05  [TfLiteXNNPackDelegate:83/83]
+
+zapisano: C:\Users\pawel\Documents\Praca_Inzynierska\praca_inz_repo\Pawel_Palcar_Praca_Inz\results\models\telefon_benchmark.csv

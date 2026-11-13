@@ -4,7 +4,7 @@ Etykieta binarna: 1 = NARUSZENIE (negatyw), 0 = autentyczne zdjęcie z wycieczki
 p_violation, a reguła trójstopniowa (evaluate.py) porównuje je z progami t_przepuść / t_blokuj.
 """
 import hashlib, io, random
-import pandas as pd, torch
+import numpy as np, pandas as pd, torch
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms as T
@@ -21,6 +21,7 @@ def load_manifest(path, ai_train_n=None):
     """Wczytuje manifest. ai_train_n: zostaw w train tylko N obrazów AI (stała kolejność wg hasha id),
     walidacja i testy pozostają nietknięte – krzywa uczenia porównuje modele na tych samych danych."""
     df = pd.read_parquet(path)
+    df["row"] = np.arange(len(df))                      # pozycja w manifeście = indeks w cache'u (train/cache.py)
     if ai_train_n is not None:
         ai_tr = df[(df.split == "train") & (df.subclass == "ai")]
         keep = ai_tr.assign(_k=stable_order(ai_tr.id)).sort_values("_k").head(ai_train_n).index
@@ -82,12 +83,36 @@ class TrailDataset(Dataset):
             return self.tf(im.convert("RGB")), self.y[i], i
 
 
+class CachedDataset(Dataset):
+    """Zdjęcia z cache'u uint8 (N×256×256×3, memmap) – bez dekodowania JPEG w epoce; augmentacje na GPU."""
+
+    def __init__(self, df, cache_file, head):
+        self.rows, self.file, self.mm = df.row.values, str(cache_file), None
+        self.y = (torch.tensor((df.label == 0).astype("float32").values) if head == "binary"
+                  else torch.tensor(df.subclass.map(CLASSES.index).values))
+
+    def __len__(self):
+        return len(self.rows)
+
+    def __getitem__(self, i):
+        if self.mm is None:                             # otwierane leniwie w każdym procesie DataLoadera
+            self.mm = np.load(self.file, mmap_mode="r")
+        return torch.from_numpy(np.array(self.mm[self.rows[i]])), self.y[i], i
+
+
 def class_weights(df, head):
-    """Wagi w funkcji straty zamiast dokładania danych (pozytywów ~21 tys., negatywów ~17 tys.)."""
+    """Wagi klas w funkcji straty zamiast dokładania danych (pozytywów ~21 tys., negatywów ~17 tys.).
+
+    5 klas: pierwiastek z odwrotności liczności (łagodniej niż 1/n: AI ma ~850 przykładów vs ~13 tys. pozytywów),
+    klasa nieobecna w treningu (AI w punkcie 0 krzywej uczenia) ma wagę 0, normalizacja do średniej 1 na próbkę.
+    Zwraca (wagi, maska klas obecnych w treningu)."""
     tr = df[df.split == "train"]
     if head == "binary":
         n_viol = (tr.label == 0).sum()
-        return torch.tensor((len(tr) - n_viol) / max(1, n_viol))        # pos_weight dla BCE
-    cnt = tr.subclass.value_counts().reindex(CLASSES).fillna(1).values
-    w = torch.tensor(len(tr) / (len(CLASSES) * cnt), dtype=torch.float32)
-    return w / w.mean()
+        return torch.tensor((len(tr) - n_viol) / max(1, n_viol)), None   # pos_weight dla BCE
+    cnt = torch.tensor(tr.subclass.value_counts().reindex(CLASSES).fillna(0).values, dtype=torch.float32)
+    present = cnt > 0
+    w = torch.zeros(len(CLASSES))
+    w[present] = (cnt[present].sum() / (present.sum() * cnt[present])).sqrt()
+    w = w / (w * cnt).sum() * cnt.sum()                                   # średnia waga na próbkę = 1
+    return w, present
